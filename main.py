@@ -129,7 +129,7 @@ def parse_timestamp(ts):
     ]
     for f in formats:
         try:
-            return datetime.datetime.strptime(ts, f)
+            return datetime.strptime(ts, f)
         except ValueError:
             pass
     return None
