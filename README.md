@@ -1,2 +1,3 @@
-# transport-opendata-scraper
-Scrape data from transport opendata
+# transport-scraper
+
+Scrape data from sbb
