@@ -1,11 +1,13 @@
-from datetime import datetime
-from fcntl import F_SEAL_SEAL
 import random
 import requests
+import math
 import os
+import datetime
 import csv
-import zipfile
 import json
+import zipfile
+from datetime import datetime, time
+from typing import List
 from io import TextIOWrapper
 from dataclasses import dataclass, is_dataclass, asdict
 
@@ -39,7 +41,7 @@ class Connection:
     transport_type: int
     duration: int
     cost: float
-    start_date: datetime
+    start_time_offset: time
     recurrence: int
 
 @dataclass
@@ -118,10 +120,24 @@ def get_stop_id(val: str):
             return int(val[0:idx])
     return None
 
+def parse_timestamp(ts):
+    formats = [
+        "%H:%M:%S", #HH:MM:SS
+        "%H:%M:%S.%f", #HH:MM:SS.mm
+        "%M:%S", #MM:SS
+        "%M:%S.%f" #MM:SS.mm
+    ]
+    for f in formats:
+        try:
+            return datetime.datetime.strptime(ts, f)
+        except ValueError:
+            pass
+    return None
 
 archive = zipfile.ZipFile(GTFS_ZIP)
 stops = archive.open('stops.txt')
 locations = dict()
+stations_by_id = dict()
 seen_stations = set()
 _ = stops.readline() # header
 while (stop := stops.readline()):
@@ -136,16 +152,56 @@ while (stop := stops.readline()):
         set_station_type(station)
         stations.append(station)
 
+        stations_by_id[station.id] = station
+
 stop_times = archive.open('stop_times.txt')
 _ = stop_times.readline() # header
+trips = dict()
 while (stop_time := stop_times.readline()):
     stop_time_line = stop_time.decode()
-    row = list(csv.reader([stop_time_line]))
+    row = list(csv.reader([stop_time_line]))[0]
     trip_id = row[0]
     departure_time = row[1]
-    stop_id = row[3]
-    
+    stop_id = get_stop_id(row[3])
+    seq = int(row[4])
 
+    if trip_id not in trips:
+        trips[trip_id] = []
+    trips[trip_id].append((seq, stop_id, departure_time))
+
+
+def set_cost(connection: Connection):
+    # TODO: 
+    pass
+
+
+connection_id = 1
+for trip_id in trips:
+    recs: List = trips[trip_id]
+    recs.sort(key=lambda x: x[0])
+    transport_type = random.choice([TRAIN, BUS])
+    if transport_type == TRAIN and any(map(lambda x: stations_by_id[x[1]].transport_type & transport_type == 0, recs)):
+        transport_type = BUS
+
+    initial = parse_timestamp(recs[0][2])
+    end_time = parse_timestamp(recs[len(recs) - 1][2])
+
+    recurrence = int(math.ceil((end_time - initial).total_seconds() / 60)) * 2
+    for i in range(len(recs) - 1):
+        from_rec = recs[i]
+        to_rec = recs[i + 1]
+
+        arrival: datetime.datetime = parse_timestamp(to_rec[2])
+        departure: datetime.datetime = parse_timestamp(from_rec[2])
+        duration = int(math.ceil((arrival - departure).total_seconds() / 60))
+
+        # TODO: maybe reverse connection?
+        connec = Connection(connection_id, from_rec[1], to_rec[1], transport_type, duration, 0, initial.time(), recurrence)
+        set_cost(connec)
+        connections.append(connec)
+        connection_id += 1
+
+# TODO: add some airplane traffic
 
 # TODO: remove stations without connections
 
