@@ -6,7 +6,7 @@ import datetime
 import csv
 import json
 import zipfile
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from typing import List
 from io import TextIOWrapper
 from dataclasses import dataclass, is_dataclass, asdict
@@ -120,16 +120,25 @@ def get_stop_id(val: str):
             return int(val[0:idx])
     return None
 
-def parse_timestamp(ts):
+def parse_timestamp(ts: str):
     formats = [
         "%H:%M:%S", #HH:MM:SS
         "%H:%M:%S.%f", #HH:MM:SS.mm
         "%M:%S", #MM:SS
         "%M:%S.%f" #MM:SS.mm
     ]
+    is_next_day = False
+    # Thank you SBB!
+    if ts.startswith('24:'):
+        is_next_day = True
+        ts = '00:' + ts[3:]
+
     for f in formats:
         try:
-            return datetime.strptime(ts, f)
+            parsed =  datetime.strptime(ts, f)
+            if is_next_day:
+                parsed += timedelta(days=1)
+            return parsed
         except ValueError:
             pass
     return None
@@ -191,8 +200,8 @@ for trip_id in trips:
         from_rec = recs[i]
         to_rec = recs[i + 1]
 
-        arrival: datetime.datetime = parse_timestamp(to_rec[2])
-        departure: datetime.datetime = parse_timestamp(from_rec[2])
+        arrival: datetime = parse_timestamp(to_rec[2])
+        departure: datetime = parse_timestamp(from_rec[2])
         duration = int(math.ceil((arrival - departure).total_seconds() / 60))
 
         # TODO: maybe reverse connection?
