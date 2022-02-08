@@ -3,11 +3,14 @@ import os
 from io import TextIOWrapper
 from dataclasses import dataclass
 
+# constants
 MSSQL_OUT = 'init_mssql.sql'
 MYSQL_OUT = 'init_mysql.sql'
 
 NUM_CUSTOMERS = 5000
 NUM_EMPLOYEES = 500
+
+# init data structures
 
 @dataclass
 class Customer:
@@ -26,6 +29,8 @@ class Employee:
 
 customers = []
 employees = []
+
+# download and prepare data
 
 res = requests.get(f'https://randomuser.me/api?results={NUM_CUSTOMERS}')
 for cust in res.json()['results']:
@@ -50,6 +55,11 @@ if not os.path.isfile(GTFS_ZIP):
             if chunk:
                 f.write(chunk)
 
+
+
+
+
+# create sql files
 
 def write_employees(sql: TextIOWrapper):
     sql.writelines([
