@@ -260,6 +260,38 @@ with open('data.pickle', 'wb') as f:
     }, f)
 
 # create sql files
+def write_tickets(sql: TextIOWrapper):
+    sql.writelines([
+        '''create table Ticket(
+                Id integer primary key,
+                ConnectionId integer foreign key not null references Connection(Id),
+                CustomerId integer foreign key not null references Customer(Id),
+                OneWay bit not null);\n\n'''
+    ])
+
+    for ticket in tickets:
+        sql.writelines([
+            f'insert into Ticket(Id, ConnectionId, CustomerId, OneWay) values ({ticket.id}, {ticket.connection_id}, {ticket.customer_id}, {1 if ticket.one_way else 0});\n'
+        ])
+
+def write_connections(sql: TextIOWrapper):
+    sql.writelines([
+        '''create table Connection(
+                Id integer primary key,
+                FromStationId integer foreign key not null references Station(Id),
+                ToStationId integer foreign key not null references Station(Id),
+                TransportType int not null,
+                Duration int not null,
+                Cost int not null,
+                StartTimeOffset time not null
+                Recurrence int not null);\n\n'''
+    ])
+
+    for connection in connections:
+        sql.writelines([
+            f'''insert into Connection(Id, FromStationId, ToStationId, TransportType, Duration, Cost, StartTimeOffset, Recurrence) values 
+                ({connection.id}, {connection.from_station_id}, {connection.to_station_id}, {connection.transport_type}, {connection.duration}, {connection.cost}, {connection.start_time_offset}, {connection.recurrence});\n'''
+        ])
 
 def write_stations(sql: TextIOWrapper):
     sql.writelines([
@@ -317,3 +349,15 @@ with open(MSSQL_OUT, 'w') as mssql:
 
         write_stations(mssql)
         write_stations(mysql)
+
+        mssql.write('\n\n')
+        mysql.write('\n\n')
+
+        write_connections(mssql)
+        write_connections(mysql)
+
+        mssql.write('\n\n')
+        mysql.write('\n\n')
+
+        write_tickets(mssql)
+        write_tickets(mysql)
