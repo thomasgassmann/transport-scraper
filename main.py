@@ -1,3 +1,6 @@
+from datetime import datetime
+from fcntl import F_SEAL_SEAL
+import random
 import requests
 import os
 import csv
@@ -12,6 +15,7 @@ MYSQL_OUT = 'init_mysql.sql'
 
 NUM_CUSTOMERS = 5000
 NUM_EMPLOYEES = 500
+NUM_TICKETS = 100
 
 # init data structures
 
@@ -25,15 +29,25 @@ class Customer:
 class Station:
     id: int
     name: str
-    station_type: int
+    transport_type: int
 
 @dataclass
 class Connection:
-    pass
+    id: int
+    from_station_id: int
+    to_station_id: int
+    transport_type: int
+    duration: int
+    cost: float
+    start_date: datetime
+    recurrence: int
 
 @dataclass
 class Ticket:
-    pass
+    id: int
+    connection_id: int
+    customer_id: int
+    one_way: bool
 
 @dataclass
 class Employee:
@@ -43,18 +57,29 @@ class Employee:
 customers = []
 employees = []
 stations = []
+connections = []
+tickets = []
 
 # download and prepare data
-
-res = requests.get(f'https://randomuser.me/api?results={NUM_CUSTOMERS}')
+if not os.path.isfile('cust.json'):
+    res = requests.get(f'https://randomuser.me/api?results={NUM_CUSTOMERS}')
+    res = res.json()['results']
+    open('cust.json', 'w').write(json.dumps(res))
+else:
+    res = json.loads(open('cust.json', 'r').read())
 customer_id = 1
-for cust in res.json()['results']:
+for cust in res:
     customers.append(Customer(customer_id, cust['name']['first'], cust['name']['last']))
     customer_id += 1
 
-res = requests.get(f'https://randomuser.me/api?results={NUM_EMPLOYEES}')
+if not os.path.isfile('emp.json'):
+    res = requests.get(f'https://randomuser.me/api?results={NUM_EMPLOYEES}')
+    res = res.json()['results']
+    open('emp.json', 'w').write(json.dumps(res))
+else:
+    res = json.loads(open('emp.json', 'r').read())
 seen_usernames = set()
-for emp in res.json()['results']:
+for emp in res:
     username = emp['login']['username']
     # usernames need to be unique
     if username in seen_usernames:
@@ -71,17 +96,67 @@ if not os.path.isfile(GTFS_ZIP):
             if chunk:
                 f.write(chunk)
 
+BUS = 0b001
+TRAIN = 0b010
+PLANE = 0b100
+
+def set_station_type(station: Station) -> str:
+    station.transport_type = BUS
+    if 'Bahnhof' in station.name:
+        station.transport_type |= TRAIN
+    if 'Airport' in station.name or 'Flughafen' in station.name:
+        if random.choice(['train', 'not_train']) == 'train':
+            station.transport_type |= TRAIN
+        station.transport_type |=  PLANE
+    
+def get_stop_id(val: str):
+    if val.isdigit():
+        return int(val)
+    if ':' in val:
+        idx = val.find(':')
+        if val[0:idx].isdigit():
+            return int(val[0:idx])
+    return None
+
+
 archive = zipfile.ZipFile(GTFS_ZIP)
 stops = archive.open('stops.txt')
+locations = dict()
+seen_stations = set()
 _ = stops.readline() # header
 while (stop := stops.readline()):
     stopline = stop.decode()
     r = csv.reader([stopline])
     values = list(r)[0]
-    if values[0].isdigit():
-        # TODO:
-        stations.append(Station(int(values[0]), values[1], 123))
+    stop_id = get_stop_id(values[0])
+    if stop_id is not None and stop_id not in seen_stations:
+        seen_stations.add(stop_id)
+        station = Station(stop_id, values[1], 123)
+        locations[station.id] = (float(values[2]), float(values[3]))
+        set_station_type(station)
+        stations.append(station)
 
+stop_times = archive.open('stop_times.txt')
+_ = stop_times.readline() # header
+while (stop_time := stop_times.readline()):
+    stop_time_line = stop_time.decode()
+    row = list(csv.reader([stop_time_line]))
+    trip_id = row[0]
+    departure_time = row[1]
+    stop_id = row[3]
+    
+
+
+# TODO: remove stations without connections
+
+ticket_id = 1
+for i in range(NUM_TICKETS):
+    tickets.append(Ticket(
+        ticket_id,
+        connections[random.randint(0, len(connections) - 1)].id,
+        customers[random.randint(0, len(customers) - 1)].id),
+        random.choice([True, False]))
+    ticket_id += 1
 
 # dump
 class EnhancedJSONEncoder(json.JSONEncoder):
@@ -94,7 +169,10 @@ with open('data.json', 'w') as f:
     f.write(json.dumps({
         'customers': customers,
         'employees': employees,
-        'stations': stations
+        'stations': stations,
+        'station_locations': locations,
+        'tickets': tickets,
+        'connections': connections
     }, cls=EnhancedJSONEncoder, indent=2))
 
 # create sql files

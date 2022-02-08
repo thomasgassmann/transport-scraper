@@ -27,6 +27,8 @@ share/python-wheels/
 *.egg
 *.zip
 data.json
+emp.json
+cust.json
 MANIFEST
 
 # PyInstaller
