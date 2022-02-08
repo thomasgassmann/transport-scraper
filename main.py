@@ -2,6 +2,8 @@ import random
 import requests
 import math
 import os
+import logging
+import pickle
 import datetime
 import csv
 import json
@@ -20,6 +22,8 @@ NUM_EMPLOYEES = 500
 NUM_TICKETS = 100
 
 # init data structures
+
+logging.basicConfig(level = logging.INFO)
 
 @dataclass
 class Customer:
@@ -90,6 +94,9 @@ for emp in res:
     seen_usernames.add(username)
     employees.append(Employee(username, emp['login']['password']))
 
+logging.info(f'Got {len(employees)} employeees')
+logging.info(f'Got {len(customers)} customers')
+
 GTFS_ZIP = 'gtfs.zip'
 if not os.path.isfile(GTFS_ZIP):
     res = requests.get('https://opentransportdata.swiss/dataset/00811070-1b51-43da-87af-b1901e906323/resource/8fd78d4f-b63e-4f00-88a1-427207a7cc46/download/gtfs_fp2022_2022-02-02_17-26.zip')
@@ -98,11 +105,13 @@ if not os.path.isfile(GTFS_ZIP):
             if chunk:
                 f.write(chunk)
 
+logging.info('Got gtfs file')
+
 BUS = 0b001
 TRAIN = 0b010
 PLANE = 0b100
 
-def set_station_type(station: Station) -> str:
+def set_transport_type(station: Station) -> str:
     station.transport_type = BUS
     if 'Bahnhof' in station.name:
         station.transport_type |= TRAIN
@@ -159,10 +168,12 @@ while (stop := stops.readline()):
         seen_stations.add(stop_id)
         station = Station(stop_id, values[1], 123)
         locations[station.id] = (float(values[2]), float(values[3]))
-        set_station_type(station)
+        set_transport_type(station)
         stations.append(station)
 
         stations_by_id[station.id] = station
+
+logging.info(f'Read {len(stations)} stations')
 
 stop_times = archive.open('stop_times.txt')
 _ = stop_times.readline() # header
@@ -179,6 +190,7 @@ while (stop_time := stop_times.readline()):
         trips[trip_id] = []
     trips[trip_id].append((seq, stop_id, departure_time))
 
+logging.info(f'Found {len(trips)} trips. Parsing connections...')
 
 def set_cost(connection: Connection):
     # TODO: 
@@ -186,6 +198,7 @@ def set_cost(connection: Connection):
 
 
 connection_id = 1
+seen_connections = set()
 for trip_id in trips:
     recs: List = trips[trip_id]
     recs.sort(key=lambda x: x[0])
@@ -206,10 +219,19 @@ for trip_id in trips:
         duration = int(math.ceil((arrival - departure).total_seconds() / 60))
 
         # TODO: maybe reverse connection?
-        connec = Connection(connection_id, from_rec[1], to_rec[1], transport_type, duration, 0, initial.time(), recurrence)
+        from_station = from_rec[1]
+        to_station = to_rec[1]
+        key_tuple = (from_station, to_station)
+        if to_station not in seen_stations or from_station not in seen_stations or key_tuple in seen_connections:
+            continue
+
+        connec = Connection(connection_id, from_station, to_station, transport_type, duration, 0, initial.time(), recurrence)
         set_cost(connec)
         connections.append(connec)
         connection_id += 1
+        seen_connections.add(key_tuple)
+
+logging.info(f'Found {len(connections)} connections in routes.')
 
 # TODO: add some airplane traffic
 
@@ -220,26 +242,22 @@ for i in range(NUM_TICKETS):
     tickets.append(Ticket(
         ticket_id,
         connections[random.randint(0, len(connections) - 1)].id,
-        customers[random.randint(0, len(customers) - 1)].id),
-        random.choice([True, False]))
+        customers[random.randint(0, len(customers) - 1)].id,
+        random.choice([True, False])))
     ticket_id += 1
 
-# dump
-class EnhancedJSONEncoder(json.JSONEncoder):
-        def default(self, o):
-            if is_dataclass(o):
-                return asdict(o)
-            return super().default(o)
+logging.info(f'Generated {len(tickets)} tickets on some routes')
 
-with open('data.json', 'w') as f:
-    f.write(json.dumps({
+# dump
+with open('data.pickle', 'wb') as f:
+    pickle.dump({
         'customers': customers,
         'employees': employees,
         'stations': stations,
         'station_locations': locations,
         'tickets': tickets,
         'connections': connections
-    }, cls=EnhancedJSONEncoder, indent=2))
+    }, f)
 
 # create sql files
 
@@ -253,7 +271,7 @@ def write_stations(sql: TextIOWrapper):
 
     for station in stations:
         sql.writelines([
-            f'insert into Station(Id, Name, TransportType) values ({station.id}, \'{station.name}\', {station.station_type});\n'
+            f'insert into Station(Id, Name, TransportType) values ({station.id}, \'{station.name}\', {station.transport_type});\n'
         ])
     
 

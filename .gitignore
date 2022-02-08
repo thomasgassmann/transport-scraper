@@ -29,6 +29,7 @@ share/python-wheels/
 data.json
 emp.json
 cust.json
+data.pickle
 MANIFEST
 
 # PyInstaller
