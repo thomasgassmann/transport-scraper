@@ -129,9 +129,10 @@ def parse_timestamp(ts: str):
     ]
     is_next_day = False
     # Thank you SBB!
-    if ts.startswith('24:'):
+    if ts[0:2].isdigit() and int(ts[0:2]) > 23:
         is_next_day = True
-        ts = '00:' + ts[3:]
+        next_day_offset = int(ts[0:2]) - 24
+        ts = f'{next_day_offset:02d}:' + ts[3:]
 
     for f in formats:
         try:
