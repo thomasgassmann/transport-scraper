@@ -1,7 +1,8 @@
 import requests
 import os
+import json
 from io import TextIOWrapper
-from dataclasses import dataclass
+from dataclasses import dataclass, is_dataclass, asdict
 
 # constants
 MSSQL_OUT = 'init_mssql.sql'
@@ -57,7 +58,18 @@ if not os.path.isfile(GTFS_ZIP):
 
 
 
+# dump
+class EnhancedJSONEncoder(json.JSONEncoder):
+        def default(self, o):
+            if is_dataclass(o):
+                return asdict(o)
+            return super().default(o)
 
+with open('data.json', 'w') as f:
+    f.write(json.dumps({
+        'customers': customers,
+        'employees': employees
+    }, cls=EnhancedJSONEncoder, indent=2))
 
 # create sql files
 
