@@ -1,4 +1,5 @@
 import requests
+import os
 from io import TextIOWrapper
 from dataclasses import dataclass
 
@@ -40,6 +41,14 @@ for emp in res.json()['results']:
 
     seen_usernames.add(username)
     employees.append(Employee(username, emp['login']['password']))
+
+GTFS_ZIP = 'gtfs.zip'
+if not os.path.isfile(GTFS_ZIP):
+    res = requests.get('https://opentransportdata.swiss/dataset/1aff176a-9665-4395-a3b1-03e3032a0373/resource/f587c0fb-e410-4fd2-a468-4f6c4c40a049/download/gtfs_fp2021_2021-12-08_09-10.zip')
+    with open(GTFS_ZIP, 'wb') as f: 
+        for chunk in res.iter_content(chunk_size=1024):
+            if chunk:
+                f.write(chunk)
 
 
 def write_employees(sql: TextIOWrapper):
