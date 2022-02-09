@@ -490,7 +490,7 @@ def t(s: int):
 def d(s: float):
     return f'{s:.2f}'
 
-def insert_statements(sql: TextIOWrapper, header, l: List, transform):
+def insert_statements_mysql(sql: TextIOWrapper, header, l: List, transform):
     sql.writelines('\n')
     first = l.pop()
     sql.write(f'insert into {header} values {transform(first)}')
@@ -499,60 +499,96 @@ def insert_statements(sql: TextIOWrapper, header, l: List, transform):
     sql.write(';\n')
 
 
-def write_tickets(sql: TextIOWrapper):
-    insert_statements(
+def write_tickets_mysql(sql: TextIOWrapper):
+    insert_statements_mysql(
         sql, 
         'Ticket(Id, StationConnectionId, CustomerId, OneWay)', 
         tickets, 
         lambda x: f'({x.id}, {x.connection_id}, {x.customer_id}, {1 if x.one_way else 0})')
 
-def write_connections(sql: TextIOWrapper):
-    insert_statements(
+def write_connections_mysql(sql: TextIOWrapper):
+    insert_statements_mysql(
         sql,
         'StationConnection(Id, FromStationId, ToStationId, TransportType, Duration, Cost)',
         connections,
         lambda connection: f'({connection.id}, {connection.from_station_id}, {connection.to_station_id}, {t(connection.transport_type)}, {connection.duration}, {d(connection.cost)})'
     )
 
-def write_stations(sql: TextIOWrapper):
-    insert_statements(
+def write_stations_mysql(sql: TextIOWrapper):
+    insert_statements_mysql(
         sql,
         'Station(Id, Name)',
         stations,
         lambda station: f'({station.id}, \'{p(station.name)}\')'
     )
 
-def write_employees(sql: TextIOWrapper):
-    insert_statements(
+def write_employees_mysql(sql: TextIOWrapper):
+    insert_statements_mysql(
         sql,
         'Employee(Username, Password, CounterStationId)',
         employees,
         lambda employee: f'(\'{p(employee.user_name)}\', \'{p(employee.password)}\', {employee.counter_station_id})'
     )
 
-def write_customers(sql: TextIOWrapper):
-    insert_statements(
+def write_customers_mysql(sql: TextIOWrapper):
+    insert_statements_mysql(
         sql,
         'Customer(Id, FirstName, LastName)',
         customers,
         lambda customer: f'({customer.id}, \'{p(customer.first_name)}\', \'{p(customer.last_name)}\')'
     )
 
+def write_tickets_mssql(sql: TextIOWrapper):
+    sql.write('\n\n')
+    for ticket in tickets:
+        sql.writelines([
+            f'insert into Ticket(Id, StationConnectionId, CustomerId, OneWay) values ({ticket.id}, {ticket.connection_id}, {ticket.customer_id}, {1 if ticket.one_way else 0});\n'
+        ])
+
+def write_connections_mssql(sql: TextIOWrapper):
+    sql.write('\n\n')
+    for connection in connections:
+        sql.writelines([
+            f'''insert into StationConnection(Id, FromStationId, ToStationId, TransportType, Duration, Cost) values ({connection.id}, {connection.from_station_id}, {connection.to_station_id}, {t(connection.transport_type)}, {connection.duration}, {d(connection.cost)});\n'''
+        ])
+
+def write_stations_mssql(sql: TextIOWrapper):
+    sql.write('\n\n')
+    for station in stations:
+        sql.writelines([
+            f'insert into Station(Id, Name) values ({station.id}, \'{p(station.name)}\');\n'
+        ])
+    
+
+def write_employees_mssql(sql: TextIOWrapper):
+    sql.write('\n\n')
+    for employee in employees:
+        sql.writelines([
+            f'insert into Employee(Username, Password, CounterStationId) values (\'{p(employee.user_name)}\', \'{p(employee.password)}\', {employee.counter_station_id});\n'
+        ])
+
+
+def write_customers_mssql(sql: TextIOWrapper):
+    sql.write('\n\n')
+    for customer in customers:
+        sql.writelines([
+            f'insert into Customer(Id, FirstName, LastName) values ({customer.id}, \'{p(customer.first_name)}\', \'{p(customer.last_name)}\');\n'
+        ])
+
 with open(MSSQL_OUT, 'w') as mssql:
     with open(MYSQL_OUT, 'w') as mysql:
         for item in [mssql, mysql]:
             write_tables(item)
 
-            write_customers(item)
-            item.write('\n\n')
-
-            write_stations(item)
-            item.write('\n\n')
-
-            write_connections(item)
-            item.write('\n\n')
-
-            write_tickets(item)
-            item.write('\n\n')
-
-            write_employees(item)
+            if item == mysql:
+                write_customers_mysql(item)
+                write_stations_mysql(item)
+                write_connections_mysql(item)
+                write_tickets_mysql(item)
+                write_employees_mysql(item)
+            else:
+                write_customers_mssql(item)
+                write_stations_mssql(item)
+                write_connections_mssql(item)
+                write_tickets_mssql(item)
+                write_employees_mssql(item)
