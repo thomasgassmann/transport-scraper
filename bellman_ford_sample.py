@@ -1,4 +1,5 @@
 import pickle
+import time
 import json
 from typing import List
 from data import Connection, Customer, Employee, Station, Ticket, BUS, TRAIN, PLANE
@@ -17,12 +18,15 @@ for station in stations:
 connections: List[Connection] = res['connections']
 
 def weight(conn: Connection):
-    return conn.cost
+    return conn.duration
 
 FROM = 8572991
-TO = 8743955
+TO = 8769842
 
+start = time.time()
 (distances, parent, via) = bellman_ford(FROM, connections, weight)
+end = time.time()
+print(f'Took {end - start}')
 
 with open('dist.json', 'w') as f:
     json.dump(distances, f)
