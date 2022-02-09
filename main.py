@@ -402,6 +402,8 @@ if not NO_PRUNE:
 for emp in employees:
     emp.counter_station_id = stations[random.randint(0, len(stations) - 1)].id
 
+employees.append(Employee('admin', 'admin', 8503000)) # Zürich HB
+
 with open('deg.json', 'w') as f:
     json.dump({
         'in': in_degrees,
