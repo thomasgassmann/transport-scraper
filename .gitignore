@@ -28,6 +28,7 @@ share/python-wheels/
 *.zip
 data.json
 deg.json
+dist.json
 emp.json
 cust.json
 data.pickle

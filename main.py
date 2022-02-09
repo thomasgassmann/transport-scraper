@@ -11,7 +11,7 @@ import zipfile
 from datetime import datetime, time, timedelta
 from typing import List
 from io import TextIOWrapper
-from dataclasses import dataclass, is_dataclass, asdict
+from data import Connection, Customer, Employee, Station, Ticket
 
 # constants
 MSSQL_OUT = 'init_mssql.sql'
@@ -27,41 +27,6 @@ AIRPORT_CLUSTER_DIST = 0.05
 # init data structures
 
 logging.basicConfig(level = logging.INFO)
-
-@dataclass
-class Customer:
-    id: int
-    first_name: str
-    last_name: str
-
-@dataclass
-class Station:
-    id: int
-    name: str
-    transport_type: int
-
-@dataclass
-class Connection:
-    id: int
-    from_station_id: int
-    to_station_id: int
-    transport_type: int
-    duration: int
-    cost: float
-    start_time_offset: time
-    recurrence: int
-
-@dataclass
-class Ticket:
-    id: int
-    connection_id: int
-    customer_id: int
-    one_way: bool
-
-@dataclass
-class Employee:
-    user_name: str
-    password: str
 
 customers = []
 employees = []
