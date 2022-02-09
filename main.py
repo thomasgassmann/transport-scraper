@@ -21,15 +21,16 @@ from data import Connection, Customer, Employee, Station, Ticket, BUS, TRAIN, PL
 MSSQL_OUT = 'init_mssql.sql'
 MYSQL_OUT = 'init_mysql.sql'
 
-NUM_CUSTOMERS = 5000
-NUM_EMPLOYEES = 500
+NUM_CUSTOMERS = 500
+NUM_EMPLOYEES = 100
 NUM_TICKETS = 100
 EUCL_COST_FACTOR = 1000
 NUM_AIRPORT_ROUTES = 50
 AIRPORT_CLUSTER_DIST = 0.05
-STATION_CLUSTER_DIST = 0.02
-REACHABILITY_FROM_REQUIRED = 8503000
-MAX_STATIONS = 5000 # going to decrease anyways
+STATION_CLUSTER_DIST = 0.034
+REACHABILITY_FROM_REQUIRED = [8503000, 8503016, 8583259, 8592929, 8572991, 8502004, 8588465, 8500682]
+MAX_STATIONS = 3000
+MAX_CONNECTIONS = 50000
 NO_PRUNE = False
 
 # init data structures
@@ -92,7 +93,7 @@ def set_transport_type(station: Station) -> str:
     if 'Airport' in station.name or 'Flughafen' in station.name or 'Aéroport' in station.name:
         if random.choice(['train', 'not_train']) == 'train':
             station.transport_type |= TRAIN
-        station.transport_type |=  PLANE
+        station.transport_type |= PLANE
         airport_ids.append(station.id)
     else:
         station.transport_type |= random.choice([TRAIN, BUS, BUS])
@@ -224,7 +225,7 @@ for trip_id in trips:
 
         arrival: datetime = parse_timestamp(to_rec[2])
         departure: datetime = parse_timestamp(from_rec[2])
-        duration = int(math.ceil((arrival - departure).total_seconds() / 60))
+        duration = int(math.ceil((arrival - departure).total_seconds() / 60)) + 5
 
         if stations_by_id[from_station].transport_type & transport_type == 0:
             stations_by_id[from_station].transport_type |= transport_type
@@ -256,7 +257,10 @@ def cluster_airport():
 representatives = []
 items = dict()
 for group in cluster_airport():
-    group.sort(key=lambda x: len(stations_by_id[x].name))
+    if any([x in REACHABILITY_FROM_REQUIRED for x in group]):
+        group.sort(key=lambda x: x in REACHABILITY_FROM_REQUIRED, reverse=True)
+    else:
+        group.sort(key=lambda x: len(stations_by_id[x].name))
     representative = group.pop()
     representatives.append(representative)
     items[representative] = []
@@ -278,7 +282,7 @@ for i in range(NUM_AIRPORT_ROUTES):
     connecting_airport.sort(key=lambda x: random.randint(1, 10))
     connecting_airport = connecting_airport[0]
     cost = eucl_dist(from_airport, connecting_airport) * AIRPORT_CLUSTER_DIST + random.randint(50, 150)
-    duration = eucl_dist(from_airport, connecting_airport) * AIRPORT_CLUSTER_DIST * 500
+    duration = eucl_dist(from_airport, connecting_airport) * AIRPORT_CLUSTER_DIST * 500 + 5
 
     time = datetime(2000, 1, 1, random.randint(0, 23), random.randint(0, 59), 0).time()
 
@@ -288,7 +292,8 @@ for i in range(NUM_AIRPORT_ROUTES):
 logging.info(f'Found {len(connections)} connections in routes.')
 
 if not NO_PRUNE:
-    logging.info(f'Pruning connections not reachable from {stations_by_id[REACHABILITY_FROM_REQUIRED].name}...')
+    for item in REACHABILITY_FROM_REQUIRED:
+        logging.info(f'Pruning connections not reachable from {stations_by_id[item].name}...')
 
     removed_stations = set()
 
@@ -303,11 +308,12 @@ if not NO_PRUNE:
                 connections.remove(connection)
 
     def remove_unreachable():
-        (distances, parent, via) = bellman_ford(REACHABILITY_FROM_REQUIRED, connections, lambda x: 1)
-        for station in stations:
-            if station.id not in distances:
-                remove_station(station.id)
-        prune_connections()
+        for item in REACHABILITY_FROM_REQUIRED:
+            (distances, parent, via) = bellman_ford(item, connections, lambda x: 1)
+            for station in stations:
+                if station.id not in distances:
+                    remove_station(station.id)
+            prune_connections()
 
     remove_unreachable()
 
@@ -324,18 +330,17 @@ if not NO_PRUNE:
         target_redir = follow_redirect(src.id)
         target_station = stations_by_id[target_redir]
         target_station.transport_type |= tar.transport_type
-        if len(target_station.name) > len(tar.name):
+        if len(target_station.name) > len(tar.name) and target_station.transport_type & PLANE != PLANE and target_station.id not in REACHABILITY_FROM_REQUIRED:
             logging.info(f'Renaming {target_station.name} to {tar.name}')
             target_station.name = tar.name
         remove_station(tar.id)
         redirects[tar.id] = target_redir
 
-
     def cluster_stations():
         src_station = stations[random.randint(0, len(stations) - 1)]
         for station in stations:
             # we don't merge stations from which reachability is required
-            if eucl_dist(src_station.id, station.id) < STATION_CLUSTER_DIST and station.id != src_station.id and station.id != REACHABILITY_FROM_REQUIRED:
+            if eucl_dist(src_station.id, station.id) < STATION_CLUSTER_DIST and station.id != src_station.id and station.id not in REACHABILITY_FROM_REQUIRED:
                 logging.info(f'Merging {stations_by_id[src_station.id].name} and {stations_by_id[station.id].name}')
                 merge(src_station, station)
                 return
@@ -362,13 +367,25 @@ if not NO_PRUNE:
         first = True
         for item in g:
             if first:
-                item.duration = int(statistics.mean(list(map(lambda x: x.duration, group))))
-                item.cost = statistics.mean(list(map(lambda x: x.cost, group)))
+                try:
+                    item.duration = int(statistics.mean(list(map(lambda x: x.duration, g)))) + 3
+                    item.cost = statistics.mean(list(map(lambda x: x.cost, g)))
+                except:
+                    logging.info(f'Could not update pricing from {stations_by_id[item.from_station_id].name} to {stations_by_id[item.to_station_id].name}')
                 first = False
                 continue
             connections.remove(item)
 
     prune_connections()
+
+    while len(connections) > MAX_CONNECTIONS:
+        cur = connections[random.randint(0, len(connections) - 1)]
+        if cur.transport_type & PLANE == PLANE or cur.transport_type & TRAIN == TRAIN:
+            continue
+
+        connections.remove(cur)
+    
+    remove_unreachable()
     
     logging.info(f'{len(connections)} connections left...')
     

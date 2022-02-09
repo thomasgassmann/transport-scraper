@@ -17,10 +17,10 @@ for station in stations:
 connections: List[Connection] = res['connections']
 
 def weight(conn: Connection):
-    return conn.duration
+    return conn.cost
 
-FROM = 8572811
-TO = 8503000
+FROM = 8572991
+TO = 8743955
 
 (distances, parent, via) = bellman_ford(FROM, connections, weight)
 
