@@ -21,7 +21,7 @@ def weight(conn: Connection):
     return conn.duration + conn.cost
 
 FROM = 8503000
-TO = 8594645
+TO = 8572886
 
 start = time.time()
 (distances, parent, via, iterations) = bellman_ford(FROM, connections, weight)

@@ -432,7 +432,7 @@ with open('data.pickle', 'wb') as f:
     }, f)
 
 # create sql files
-def write_tables(sql: TextIOWrapper):
+def write_tables(sql: TextIOWrapper, mssql: bool):
     sql.writelines([
         '''create table Customer(
                 Id integer not null,
@@ -459,8 +459,8 @@ def write_tables(sql: TextIOWrapper):
                 constraint fk_to_station_id foreign key (ToStationId) references Station(Id));\n\n'''
     ])
     sql.writelines([
-        '''create table Ticket(
-                Id integer not null,
+        f'''create table Ticket(
+                Id integer not null {'identity(1, 1)' if mssql else 'auto_increment'},
                 StationConnectionId integer not null,
                 CustomerId integer not null,
                 OneWay bit not null,
@@ -502,9 +502,9 @@ def insert_statements_mysql(sql: TextIOWrapper, header, l: List, transform):
 def write_tickets_mysql(sql: TextIOWrapper):
     insert_statements_mysql(
         sql, 
-        'Ticket(Id, StationConnectionId, CustomerId, OneWay)', 
+        'Ticket(StationConnectionId, CustomerId, OneWay)', 
         tickets, 
-        lambda x: f'({x.id}, {x.connection_id}, {x.customer_id}, {1 if x.one_way else 0})')
+        lambda x: f'({x.connection_id}, {x.customer_id}, {1 if x.one_way else 0})')
 
 def write_connections_mysql(sql: TextIOWrapper):
     insert_statements_mysql(
@@ -542,7 +542,7 @@ def write_tickets_mssql(sql: TextIOWrapper):
     sql.write('\n\n')
     for ticket in tickets:
         sql.writelines([
-            f'insert into Ticket(Id, StationConnectionId, CustomerId, OneWay) values ({ticket.id}, {ticket.connection_id}, {ticket.customer_id}, {1 if ticket.one_way else 0});\n'
+            f'insert into Ticket(StationConnectionId, CustomerId, OneWay) values ({ticket.connection_id}, {ticket.customer_id}, {1 if ticket.one_way else 0});\n'
         ])
 
 def write_connections_mssql(sql: TextIOWrapper):
@@ -578,7 +578,7 @@ def write_customers_mssql(sql: TextIOWrapper):
 with open(MSSQL_OUT, 'w') as mssql:
     with open(MYSQL_OUT, 'w') as mysql:
         for item in [mssql, mysql]:
-            write_tables(item)
+            write_tables(item, item == mssql)
 
             if item == mysql:
                 write_customers_mysql(item)
