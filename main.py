@@ -490,37 +490,53 @@ def t(s: int):
 def d(s: float):
     return f'{s:.2f}'
 
+def insert_statements(sql: TextIOWrapper, header, l: List, transform):
+    sql.writelines('\n')
+    first = l.pop()
+    sql.write(f'insert into {header} values {transform(first)}')
+    for item in l:
+        sql.write(f', {transform(item)}')
+    sql.write(';\n')
+
+
 def write_tickets(sql: TextIOWrapper):
-    for ticket in tickets:
-        sql.writelines([
-            f'insert into Ticket(Id, StationConnectionId, CustomerId, OneWay) values ({ticket.id}, {ticket.connection_id}, {ticket.customer_id}, {1 if ticket.one_way else 0});\n'
-        ])
+    insert_statements(
+        sql, 
+        'Ticket(Id, StationConnectionId, CustomerId, OneWay)', 
+        tickets, 
+        lambda x: f'({x.id}, {x.connection_id}, {x.customer_id}, {1 if x.one_way else 0})')
 
 def write_connections(sql: TextIOWrapper):
-    for connection in connections:
-        sql.writelines([
-            f'''insert into StationConnection(Id, FromStationId, ToStationId, TransportType, Duration, Cost) values ({connection.id}, {connection.from_station_id}, {connection.to_station_id}, {t(connection.transport_type)}, {connection.duration}, {d(connection.cost)});\n'''
-        ])
+    insert_statements(
+        sql,
+        'StationConnection(Id, FromStationId, ToStationId, TransportType, Duration, Cost)',
+        connections,
+        lambda connection: f'({connection.id}, {connection.from_station_id}, {connection.to_station_id}, {t(connection.transport_type)}, {connection.duration}, {d(connection.cost)})'
+    )
 
 def write_stations(sql: TextIOWrapper):
-    for station in stations:
-        sql.writelines([
-            f'insert into Station(Id, Name) values ({station.id}, \'{p(station.name)}\');\n'
-        ])
-    
+    insert_statements(
+        sql,
+        'Station(Id, Name)',
+        stations,
+        lambda station: f'({station.id}, \'{p(station.name)}\')'
+    )
 
 def write_employees(sql: TextIOWrapper):
-    for employee in employees:
-        sql.writelines([
-            f'insert into Employee(Username, Password, CounterStationId) values (\'{p(employee.user_name)}\', \'{p(employee.password)}\', {employee.counter_station_id});\n'
-        ])
-
+    insert_statements(
+        sql,
+        'Employee(Username, Password, CounterStationId)',
+        employees,
+        lambda employee: f'(\'{p(employee.user_name)}\', \'{p(employee.password)}\', {employee.counter_station_id})'
+    )
 
 def write_customers(sql: TextIOWrapper):
-    for customer in customers:
-        sql.writelines([
-            f'insert into Customer(Id, FirstName, LastName) values ({customer.id}, \'{p(customer.first_name)}\', \'{p(customer.last_name)}\');\n'
-        ])
+    insert_statements(
+        sql,
+        'Customer(Id, FirstName, LastName)',
+        customers,
+        lambda customer: f'({customer.id}, \'{p(customer.first_name)}\', \'{p(customer.last_name)}\')'
+    )
 
 with open(MSSQL_OUT, 'w') as mssql:
     with open(MYSQL_OUT, 'w') as mysql:
