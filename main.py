@@ -403,6 +403,12 @@ for emp in employees:
     emp.counter_station_id = stations[random.randint(0, len(stations) - 1)].id
 
 employees.append(Employee('admin', 'admin', 8503000)) # Zürich HB
+stations.insert(random.randint(0, len(stations) - 1), Station(1, 'Regionalmeisterschaften', BUS))
+stations.insert(random.randint(0, len(stations) - 1), Station(2, 'ICTSkills', BUS))
+stations.insert(random.randint(0, len(stations) - 1), Station(3, 'WorldSkills', PLANE))
+connections.insert(random.randint(0, len(connections) - 1), Connection(connection_id, 1, 2, TRAIN, 1000, 1))
+connection_id += 1
+connections.insert(random.randint(0, len(connections) - 1), Connection(connection_id, 2, 3, PLANE, 10000, 1))
 
 with open('deg.json', 'w') as f:
     json.dump({
