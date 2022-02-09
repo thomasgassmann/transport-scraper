@@ -4,6 +4,7 @@ def bellman_ford(from_station, connections, weight):
     via = dict()
     distances[from_station] = 0
     done = False
+    iterations = 0
     while not done:
         done = True
         for conn in connections:
@@ -15,4 +16,5 @@ def bellman_ford(from_station, connections, weight):
                 via[conn.to_station_id] = conn
 
                 done = False
-    return (distances, parent, via)
+        iterations += 1
+    return (distances, parent, via, iterations)

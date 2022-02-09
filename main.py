@@ -11,7 +11,7 @@ import csv
 import json
 import zipfile
 import statistics
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 from typing import List
 from io import TextIOWrapper
 from bellman_ford import bellman_ford
@@ -309,7 +309,7 @@ if not NO_PRUNE:
 
     def remove_unreachable():
         for item in REACHABILITY_FROM_REQUIRED:
-            (distances, parent, via) = bellman_ford(item, connections, lambda x: 1)
+            (distances, parent, via, iterations) = bellman_ford(item, connections, lambda x: 1)
             for station in stations:
                 if station.id not in distances:
                     remove_station(station.id)
@@ -376,8 +376,6 @@ if not NO_PRUNE:
                 continue
             connections.remove(item)
 
-    prune_connections()
-
     while len(connections) > MAX_CONNECTIONS:
         cur = connections[random.randint(0, len(connections) - 1)]
         if cur.transport_type & PLANE == PLANE or cur.transport_type & TRAIN == TRAIN:
@@ -386,7 +384,7 @@ if not NO_PRUNE:
         connections.remove(cur)
     
     remove_unreachable()
-    
+
     logging.info(f'{len(connections)} connections left...')
 
 # assign stations to employees
@@ -423,31 +421,59 @@ with open('data.pickle', 'wb') as f:
     }, f)
 
 # create sql files
-def write_tickets(sql: TextIOWrapper):
+def write_tables(sql: TextIOWrapper):
+    sql.writelines([
+        '''create table Customer(
+                Id integer not null,
+                FirstName varchar(100) not null,
+                LastName varchar(100) not null,
+                constraint pk_customer_id primary key (Id));\n\n'''
+    ])
+    sql.writelines([
+        '''create table Station(
+                Id integer not null,
+                Name varchar(100) not null,
+                TransportType int not null,
+                constraint pk_station_id primary key (Id));\n\n'''
+    ])
+    sql.writelines([
+        '''create table Connection(
+                Id integer primary key,
+                FromStationId integer not null,
+                ToStationId integer not null,
+                TransportType integer not null,
+                Duration integer not null,
+                Cost decimal(10, 2) not null,
+                constraint pk_connection_id primary key (Id),
+                constraint fk_from_station_id foreign key (FromStationId) references Station(Id),
+                constraint fk_to_station_id foreign key (ToStationId) references Station(Id));\n\n'''
+    ])
     sql.writelines([
         '''create table Ticket(
-                Id integer primary key,
-                ConnectionId integer foreign key not null references Connection(Id),
-                CustomerId integer foreign key not null references Customer(Id),
-                OneWay bit not null);\n\n'''
+                Id integer not null,
+                ConnectionId integer not null,
+                CustomerId integer not null,
+                OneWay bit not null,
+                constraint pk_ticket_id primary key (Id),
+                constraint fk_connection_id foreign key (ConnectionId) references Connection(Id),
+                constraint fk_customer_id foreign key (CustomerId) references Customer(Id));\n\n'''
+    ])
+    sql.writelines([
+        '''create table Employee(
+                Username varchar(100) not null,
+                Password varchar(100) not null,
+                CounterStationId integer not null,
+                constraint pk_employee_username primary key (Username),
+                constraint fk_counter_station_id foreign key (CounterStationId) references Station(Id));\n\n'''
     ])
 
+def write_tickets(sql: TextIOWrapper):
     for ticket in tickets:
         sql.writelines([
             f'insert into Ticket(Id, ConnectionId, CustomerId, OneWay) values ({ticket.id}, {ticket.connection_id}, {ticket.customer_id}, {1 if ticket.one_way else 0});\n'
         ])
 
 def write_connections(sql: TextIOWrapper):
-    sql.writelines([
-        '''create table Connection(
-                Id integer primary key,
-                FromStationId integer foreign key not null references Station(Id),
-                ToStationId integer foreign key not null references Station(Id),
-                TransportType int not null,
-                Duration int not null,
-                Cost int not null);\n\n'''
-    ])
-
     for connection in connections:
         sql.writelines([
             f'''insert into Connection(Id, FromStationId, ToStationId, TransportType, Duration, Cost) values 
@@ -455,13 +481,6 @@ def write_connections(sql: TextIOWrapper):
         ])
 
 def write_stations(sql: TextIOWrapper):
-    sql.writelines([
-        '''create table Station(
-                Id integer primary key,
-                Name varchar(100) not null,
-                TransportType int not null);\n\n'''
-    ])
-
     for station in stations:
         sql.writelines([
             f'insert into Station(Id, Name, TransportType) values ({station.id}, \'{station.name}\', {station.transport_type});\n'
@@ -469,27 +488,13 @@ def write_stations(sql: TextIOWrapper):
     
 
 def write_employees(sql: TextIOWrapper):
-    sql.writelines([
-        '''create table Employee(
-                Username varchar(100) primary key,
-                [Password] varchar(100) not null,
-                CounterStationId integer);\n\n'''
-    ])
-
     for employee in employees:
         sql.writelines([
-            f'insert into Employee(Username, [Password]) values (\'{employee.user_name}\', \'{employee.password}\');\n'
+            f'insert into Employee(Username, Password) values (\'{employee.user_name}\', \'{employee.password}\');\n'
         ])
 
 
 def write_customers(sql: TextIOWrapper):
-    sql.writelines([
-        '''create table Customer(
-                Id integer not null primary key,
-                FirstName varchar(100) not null,
-                LastName varchar(100) not null);\n\n'''
-    ])
-
     for customer in customers:
         sql.writelines([
             f'insert into Customer(Id, FirstName, LastName) values ({customer.id}, \'{customer.first_name}\', \'{customer.last_name}\');\n'
@@ -497,29 +502,19 @@ def write_customers(sql: TextIOWrapper):
 
 with open(MSSQL_OUT, 'w') as mssql:
     with open(MYSQL_OUT, 'w') as mysql:
-        write_customers(mssql)
-        write_customers(mysql)
+        for item in [mssql, mysql]:
+            write_tables(item)
 
-        mssql.write('\n\n')
-        mysql.write('\n\n')
+            write_customers(item)
+            item.write('\n\n')
 
-        write_employees(mssql)
-        write_employees(mysql)
+            write_stations(item)
+            item.write('\n\n')
 
-        mssql.write('\n\n')
-        mysql.write('\n\n')
+            write_connections(item)
+            item.write('\n\n')
 
-        write_stations(mssql)
-        write_stations(mysql)
+            write_tickets(item)
+            item.write('\n\n')
 
-        mssql.write('\n\n')
-        mysql.write('\n\n')
-
-        write_connections(mssql)
-        write_connections(mysql)
-
-        mssql.write('\n\n')
-        mysql.write('\n\n')
-
-        write_tickets(mssql)
-        write_tickets(mysql)
+            write_employees(item)
