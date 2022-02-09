@@ -385,6 +385,17 @@ if not NO_PRUNE:
     
     remove_unreachable()
 
+    valid_stations = set()
+    for station in stations:
+        valid_stations.add(station.id)
+    to_remove = []
+    for connection in connections:
+        if connection.from_station_id not in valid_stations or connection.to_station_id not in valid_stations:
+            to_remove.append(connection)
+            logging.info(f'Removing {stations_by_id[connection.from_station_id].name} - {stations_by_id[connection.to_station_id].name}')
+    for item in to_remove:
+        connections.remove(item)
+
     logging.info(f'{len(connections)} connections left...')
 
 # assign stations to employees
@@ -470,12 +481,10 @@ def p(s: str):
     return s.replace('\'', '\'\'')
 
 def t(s: int):
-    if s & BUS == BUS:
-        return 0
-    if s & TRAIN == TRAIN:
-        return 1
     if s & PLANE == PLANE:
         return 2
+    if s & TRAIN == TRAIN:
+        return 1
     return 0
 
 def d(s: float):
@@ -503,7 +512,7 @@ def write_stations(sql: TextIOWrapper):
 def write_employees(sql: TextIOWrapper):
     for employee in employees:
         sql.writelines([
-            f'insert into Employee(Username, Password) values (\'{p(employee.user_name)}\', \'{p(employee.password)}\');\n'
+            f'insert into Employee(Username, Password, CounterStationId) values (\'{p(employee.user_name)}\', \'{p(employee.password)}\', {employee.counter_station_id});\n'
         ])
 
 
