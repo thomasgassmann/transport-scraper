@@ -433,12 +433,11 @@ def write_tables(sql: TextIOWrapper):
         '''create table Station(
                 Id integer not null,
                 Name varchar(100) not null,
-                TransportType int not null,
                 constraint pk_station_id primary key (Id));\n\n'''
     ])
     sql.writelines([
         '''create table Connection(
-                Id integer primary key,
+                Id integer not null,
                 FromStationId integer not null,
                 ToStationId integer not null,
                 TransportType integer not null,
@@ -467,6 +466,21 @@ def write_tables(sql: TextIOWrapper):
                 constraint fk_counter_station_id foreign key (CounterStationId) references Station(Id));\n\n'''
     ])
 
+def p(s: str):
+    return s.replace('\'', '\'\'')
+
+def t(s: int):
+    if s & BUS == BUS:
+        return 0
+    if s & TRAIN == TRAIN:
+        return 1
+    if s & PLANE == PLANE:
+        return 2
+    return 0
+
+def d(s: float):
+    return f'{s:.2f}'
+
 def write_tickets(sql: TextIOWrapper):
     for ticket in tickets:
         sql.writelines([
@@ -477,27 +491,27 @@ def write_connections(sql: TextIOWrapper):
     for connection in connections:
         sql.writelines([
             f'''insert into Connection(Id, FromStationId, ToStationId, TransportType, Duration, Cost) values 
-                ({connection.id}, {connection.from_station_id}, {connection.to_station_id}, {connection.transport_type}, {connection.duration}, {connection.cost});\n'''
+                ({connection.id}, {connection.from_station_id}, {connection.to_station_id}, {t(connection.transport_type)}, {connection.duration}, {d(connection.cost)});\n'''
         ])
 
 def write_stations(sql: TextIOWrapper):
     for station in stations:
         sql.writelines([
-            f'insert into Station(Id, Name, TransportType) values ({station.id}, \'{station.name}\', {station.transport_type});\n'
+            f'insert into Station(Id, Name) values ({station.id}, \'{p(station.name)}\');\n'
         ])
     
 
 def write_employees(sql: TextIOWrapper):
     for employee in employees:
         sql.writelines([
-            f'insert into Employee(Username, Password) values (\'{employee.user_name}\', \'{employee.password}\');\n'
+            f'insert into Employee(Username, Password) values (\'{p(employee.user_name)}\', \'{p(employee.password)}\');\n'
         ])
 
 
 def write_customers(sql: TextIOWrapper):
     for customer in customers:
         sql.writelines([
-            f'insert into Customer(Id, FirstName, LastName) values ({customer.id}, \'{customer.first_name}\', \'{customer.last_name}\');\n'
+            f'insert into Customer(Id, FirstName, LastName) values ({customer.id}, \'{p(customer.first_name)}\', \'{p(customer.last_name)}\');\n'
         ])
 
 with open(MSSQL_OUT, 'w') as mssql:
