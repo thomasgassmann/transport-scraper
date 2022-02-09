@@ -20,6 +20,9 @@ MYSQL_OUT = 'init_mysql.sql'
 NUM_CUSTOMERS = 5000
 NUM_EMPLOYEES = 500
 NUM_TICKETS = 100
+EUCL_COST_FACTOR = 1000
+NUM_AIRPORT_ROUTES = 50
+AIRPORT_CLUSTER_DIST = 0.05
 
 # init data structures
 
@@ -111,6 +114,8 @@ BUS = 0b001
 TRAIN = 0b010
 PLANE = 0b100
 
+airport_ids = []
+
 def set_transport_type(station: Station) -> str:
     station.transport_type = BUS
     if 'Bahnhof' in station.name:
@@ -119,6 +124,7 @@ def set_transport_type(station: Station) -> str:
         if random.choice(['train', 'not_train']) == 'train':
             station.transport_type |= TRAIN
         station.transport_type |=  PLANE
+        airport_ids.append(station.id)
     
 def get_stop_id(val: str):
     if val.isdigit():
@@ -192,13 +198,38 @@ while (stop_time := stop_times.readline()):
 
 logging.info(f'Found {len(trips)} trips. Parsing connections...')
 
+def eucl_dist(from_id, to_id):
+    loc_from = locations[from_id]
+    loc_to = locations[to_id]
+    return (((loc_to[1] - loc_from[1]) ** 2) + ((loc_to[0] - loc_from[0]) ** 2)) ** 0.5
+
+def eucl_dist_cost(from_id, to_id):
+    return round(eucl_dist(from_id, to_id) * EUCL_COST_FACTOR, 2)
+
 def set_cost(connection: Connection):
-    # TODO: 
-    pass
+    cost = 0
+    if connection.transport_type == PLANE:
+        cost += random.randint(100, 140)
+
+    if connection.transport_type == TRAIN:
+        cost += random.randint(5, 10)
+    
+    cost += random.randint(0, 5)
+
+    dist = eucl_dist_cost(connection.from_station_id, connection.to_station_id)
+
+    connection.cost = cost + dist
 
 
 connection_id = 1
 seen_connections = set()
+in_degrees = dict()
+out_degrees = dict()
+
+for station in stations:
+    in_degrees[station.id] = 0
+    out_degrees[station.id] = 0
+
 for trip_id in trips:
     recs: List = trips[trip_id]
     recs.sort(key=lambda x: x[0])
@@ -214,28 +245,80 @@ for trip_id in trips:
         from_rec = recs[i]
         to_rec = recs[i + 1]
 
-        arrival: datetime = parse_timestamp(to_rec[2])
-        departure: datetime = parse_timestamp(from_rec[2])
-        duration = int(math.ceil((arrival - departure).total_seconds() / 60))
-
-        # TODO: maybe reverse connection?
         from_station = from_rec[1]
         to_station = to_rec[1]
+
         key_tuple = (from_station, to_station)
         if to_station not in seen_stations or from_station not in seen_stations or key_tuple in seen_connections:
             continue
+
+        arrival: datetime = parse_timestamp(to_rec[2])
+        departure: datetime = parse_timestamp(from_rec[2])
+        duration = int(math.ceil((arrival - departure).total_seconds() / 60))
 
         connec = Connection(connection_id, from_station, to_station, transport_type, duration, 0, initial.time(), recurrence)
         set_cost(connec)
         connections.append(connec)
         connection_id += 1
         seen_connections.add(key_tuple)
+        in_degrees[to_station] += 1
+        out_degrees[from_station] += 1
+
+# generate some airports routes
+# first, merge airports and select a representative
+
+def cluster_airport():
+    airports = airport_ids
+    C = []
+    while len(airports):
+        locus = airports.pop()
+        cluster = [x for x in airports if eucl_dist(locus, x) <= AIRPORT_CLUSTER_DIST]
+        C.append(cluster + [locus])
+        for x in cluster:
+            airports.remove(x)
+    return C
+
+representatives = []
+items = dict()
+for group in cluster_airport():
+    group.sort(key=lambda x: len(stations_by_id[x].name))
+    representative = group.pop()
+    representatives.append(representative)
+    empty_time = datetime(2000, 1, 1, 0, 0, 0).time()
+    items[representative] = []
+    for item in group:
+        items[representative].append(item)
+
+        forth = Connection(connection_id, representative, item, BUS, 0, 0, empty_time, 0)
+        connection_id += 1
+
+        back = Connection(connection_id, item, representative, BUS, 0, 0, empty_time, 0)
+        connection_id += 1
+
+        connections.append(forth)
+        connections.append(back)
+
+for i in range(NUM_AIRPORT_ROUTES):
+    from_airport = representatives[random.randint(0, len(representatives) - 1)]
+    connecting_airport = [repre for repre in representatives if repre != from_airport]
+    connecting_airport.sort(key=lambda x: random.randint(1, 10))
+    connecting_airport = connecting_airport[0]
+    cost = eucl_dist(from_airport, connecting_airport) * AIRPORT_CLUSTER_DIST + random.randint(50, 150)
+    duration = eucl_dist(from_airport, connecting_airport) * AIRPORT_CLUSTER_DIST * 10
+
+    time = datetime(2000, 1, 1, random.randint(0, 23), random.randint(0, 59), 0).time()
+
+    connections.append(Connection(connection_id, from_airport, connecting_airport, PLANE, duration, round(cost, 2), time, 60 * 12))
+    connection_id += 1
 
 logging.info(f'Found {len(connections)} connections in routes.')
 
-# TODO: add some airplane traffic
+with open('deg.json', 'w') as f:
+    json.dump({
+        'in': in_degrees,
+        'out': out_degrees
+    }, f)
 
-# TODO: remove stations without connections
 
 ticket_id = 1
 for i in range(NUM_TICKETS):

@@ -27,6 +27,7 @@ share/python-wheels/
 *.egg
 *.zip
 data.json
+deg.json
 emp.json
 cust.json
 data.pickle
