@@ -69,7 +69,7 @@ for emp in res:
         continue
 
     seen_usernames.add(username)
-    employees.append(Employee(username, emp['login']['password']))
+    employees.append(Employee(username, emp['login']['password'], -1))
 
 logging.info(f'Got {len(employees)} employeees')
 logging.info(f'Got {len(customers)} customers')
@@ -388,7 +388,10 @@ if not NO_PRUNE:
     remove_unreachable()
     
     logging.info(f'{len(connections)} connections left...')
-    
+
+# assign stations to employees
+for emp in employees:
+    emp.counter_station_id = stations[random.randint(0, len(stations) - 1)].id
 
 with open('deg.json', 'w') as f:
     json.dump({
@@ -469,7 +472,8 @@ def write_employees(sql: TextIOWrapper):
     sql.writelines([
         '''create table Employee(
                 Username varchar(100) primary key,
-                [Password] varchar(100) not null);\n\n'''
+                [Password] varchar(100) not null,
+                CounterStationId integer);\n\n'''
     ])
 
     for employee in employees:

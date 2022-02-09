@@ -33,6 +33,7 @@ class Ticket:
 class Employee:
     user_name: str
     password: str
+    counter_station_id: int
 
 BUS = 0b001
 TRAIN = 0b010
