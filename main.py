@@ -436,25 +436,25 @@ def write_tables(sql: TextIOWrapper):
                 constraint pk_station_id primary key (Id));\n\n'''
     ])
     sql.writelines([
-        '''create table Connection(
+        '''create table StationConnection(
                 Id integer not null,
                 FromStationId integer not null,
                 ToStationId integer not null,
                 TransportType integer not null,
                 Duration integer not null,
                 Cost decimal(10, 2) not null,
-                constraint pk_connection_id primary key (Id),
+                constraint pk_station_connection_id primary key (Id),
                 constraint fk_from_station_id foreign key (FromStationId) references Station(Id),
                 constraint fk_to_station_id foreign key (ToStationId) references Station(Id));\n\n'''
     ])
     sql.writelines([
         '''create table Ticket(
                 Id integer not null,
-                ConnectionId integer not null,
+                StationConnectionId integer not null,
                 CustomerId integer not null,
                 OneWay bit not null,
                 constraint pk_ticket_id primary key (Id),
-                constraint fk_connection_id foreign key (ConnectionId) references Connection(Id),
+                constraint fk_connection_id foreign key (StationConnectionId) references StationConnection(Id),
                 constraint fk_customer_id foreign key (CustomerId) references Customer(Id));\n\n'''
     ])
     sql.writelines([
@@ -484,14 +484,13 @@ def d(s: float):
 def write_tickets(sql: TextIOWrapper):
     for ticket in tickets:
         sql.writelines([
-            f'insert into Ticket(Id, ConnectionId, CustomerId, OneWay) values ({ticket.id}, {ticket.connection_id}, {ticket.customer_id}, {1 if ticket.one_way else 0});\n'
+            f'insert into Ticket(Id, StationConnectionId, CustomerId, OneWay) values ({ticket.id}, {ticket.connection_id}, {ticket.customer_id}, {1 if ticket.one_way else 0});\n'
         ])
 
 def write_connections(sql: TextIOWrapper):
     for connection in connections:
         sql.writelines([
-            f'''insert into Connection(Id, FromStationId, ToStationId, TransportType, Duration, Cost) values 
-                ({connection.id}, {connection.from_station_id}, {connection.to_station_id}, {t(connection.transport_type)}, {connection.duration}, {d(connection.cost)});\n'''
+            f'''insert into StationConnection(Id, FromStationId, ToStationId, TransportType, Duration, Cost) values ({connection.id}, {connection.from_station_id}, {connection.to_station_id}, {t(connection.transport_type)}, {connection.duration}, {d(connection.cost)});\n'''
         ])
 
 def write_stations(sql: TextIOWrapper):
