@@ -1,7 +1,8 @@
 import pickle
 import json
 from typing import List
-from data import Connection, Customer, Employee, Station, Ticket
+from data import Connection, Customer, Employee, Station, Ticket, BUS, TRAIN, PLANE
+from bellman_ford import bellman_ford
 
 # try on huge amount of data and see if performance is reasonable
 with open('data.pickle', 'rb') as f:
@@ -16,33 +17,34 @@ for station in stations:
 connections: List[Connection] = res['connections']
 
 def weight(conn: Connection):
-    return conn.cost
+    return conn.duration
 
-FROM = 8502004
+FROM = 8572811
 TO = 8503000
-distances = dict()
-parent = dict()
-distances[FROM] = 0
-done = False
-i = 0
-while not done:
-    done = True
-    for conn in connections:
-        res_exp = conn.to_station_id in distances
-        src_exp = conn.from_station_id in distances
-        if (not res_exp and src_exp) or (res_exp and src_exp and distances[conn.to_station_id] > distances[conn.from_station_id] + weight(conn)):
-            distances[conn.to_station_id] = distances[conn.from_station_id] + weight(conn)
-            parent[conn.to_station_id] = conn.from_station_id
-            done = False
-    i += 1
+
+(distances, parent, via) = bellman_ford(FROM, connections, weight)
 
 with open('dist.json', 'w') as f:
     json.dump(distances, f)
 
 current = TO
+total_cost = 0
+total_duration = 0
 while current is not None:
     print(station_by_id[current].name)
     if current not in parent:
         break
 
+    if via[current].transport_type & BUS == BUS:
+        transport_type = 'bus'
+    elif via[current].transport_type & TRAIN == TRAIN:
+        transport_type = 'train'
+    else:
+        transport_type = 'plane'
+    print(f'{weight(via[current])} - {transport_type}')
+    total_cost += via[current].cost
+    total_duration += via[current].duration
     current = parent[current]
+
+print(f'\nTotal cost: {total_cost}')
+print(f'Total duration: {total_duration}')

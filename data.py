@@ -21,8 +21,6 @@ class Connection:
     transport_type: int
     duration: int
     cost: float
-    start_time_offset: time
-    recurrence: int
 
 @dataclass
 class Ticket:
@@ -35,3 +33,7 @@ class Ticket:
 class Employee:
     user_name: str
     password: str
+
+BUS = 0b001
+TRAIN = 0b010
+PLANE = 0b100

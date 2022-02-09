@@ -1,4 +1,6 @@
+from itertools import groupby
 import random
+from types import NoneType
 import requests
 import math
 import os
@@ -8,10 +10,12 @@ import datetime
 import csv
 import json
 import zipfile
+import statistics
 from datetime import datetime, time, timedelta
 from typing import List
 from io import TextIOWrapper
-from data import Connection, Customer, Employee, Station, Ticket
+from bellman_ford import bellman_ford
+from data import Connection, Customer, Employee, Station, Ticket, BUS, TRAIN, PLANE
 
 # constants
 MSSQL_OUT = 'init_mssql.sql'
@@ -23,6 +27,10 @@ NUM_TICKETS = 100
 EUCL_COST_FACTOR = 1000
 NUM_AIRPORT_ROUTES = 50
 AIRPORT_CLUSTER_DIST = 0.05
+STATION_CLUSTER_DIST = 0.02
+REACHABILITY_FROM_REQUIRED = 8503000
+MAX_STATIONS = 5000 # going to decrease anyways
+NO_PRUNE = False
 
 # init data structures
 
@@ -75,21 +83,19 @@ if not os.path.isfile(GTFS_ZIP):
 
 logging.info('Got gtfs file')
 
-BUS = 0b001
-TRAIN = 0b010
-PLANE = 0b100
-
 airport_ids = []
 
 def set_transport_type(station: Station) -> str:
     station.transport_type = BUS
-    if 'Bahnhof' in station.name:
+    if 'Bahnhof' in station.name or 'HB' in station.name:
         station.transport_type |= TRAIN
-    if 'Airport' in station.name or 'Flughafen' in station.name:
+    if 'Airport' in station.name or 'Flughafen' in station.name or 'Aéroport' in station.name:
         if random.choice(['train', 'not_train']) == 'train':
             station.transport_type |= TRAIN
         station.transport_type |=  PLANE
         airport_ids.append(station.id)
+    else:
+        station.transport_type |= random.choice([TRAIN, BUS, BUS])
     
 def get_stop_id(val: str):
     if val.isdigit():
@@ -175,9 +181,6 @@ def set_cost(connection: Connection):
     cost = 0
     if connection.transport_type == PLANE:
         cost += random.randint(100, 140)
-
-    if connection.transport_type == TRAIN:
-        cost += random.randint(5, 10)
     
     cost += random.randint(0, 5)
 
@@ -198,8 +201,10 @@ for station in stations:
 for trip_id in trips:
     recs: List = trips[trip_id]
     recs.sort(key=lambda x: x[0])
-    transport_type = random.choice([TRAIN, BUS])
-    if transport_type == TRAIN and any(map(lambda x: stations_by_id[x[1]].transport_type & transport_type == 0, recs)):
+    if (stations_by_id[recs[0][1]].transport_type & TRAIN == TRAIN and stations_by_id[recs[len(recs) - 1][1]].transport_type & TRAIN == TRAIN) or \
+        all(map(lambda x: stations_by_id[x[1]].transport_type & TRAIN == TRAIN, recs)):
+        transport_type = TRAIN
+    else:
         transport_type = BUS
 
     initial = parse_timestamp(recs[0][2])
@@ -221,7 +226,12 @@ for trip_id in trips:
         departure: datetime = parse_timestamp(from_rec[2])
         duration = int(math.ceil((arrival - departure).total_seconds() / 60))
 
-        connec = Connection(connection_id, from_station, to_station, transport_type, duration, 0, initial.time(), recurrence)
+        if stations_by_id[from_station].transport_type & transport_type == 0:
+            stations_by_id[from_station].transport_type |= transport_type
+        if stations_by_id[to_station].transport_type & transport_type == 0:
+            stations_by_id[to_station].transport_type |= transport_type
+
+        connec = Connection(connection_id, from_station, to_station, transport_type, duration, 0)
         set_cost(connec)
         connections.append(connec)
         connection_id += 1
@@ -249,15 +259,14 @@ for group in cluster_airport():
     group.sort(key=lambda x: len(stations_by_id[x].name))
     representative = group.pop()
     representatives.append(representative)
-    empty_time = datetime(2000, 1, 1, 0, 0, 0).time()
     items[representative] = []
     for item in group:
         items[representative].append(item)
 
-        forth = Connection(connection_id, representative, item, BUS, 0, 0, empty_time, 0)
+        forth = Connection(connection_id, representative, item, BUS, 1, 1)
         connection_id += 1
 
-        back = Connection(connection_id, item, representative, BUS, 0, 0, empty_time, 0)
+        back = Connection(connection_id, item, representative, BUS, 1, 1)
         connection_id += 1
 
         connections.append(forth)
@@ -269,14 +278,100 @@ for i in range(NUM_AIRPORT_ROUTES):
     connecting_airport.sort(key=lambda x: random.randint(1, 10))
     connecting_airport = connecting_airport[0]
     cost = eucl_dist(from_airport, connecting_airport) * AIRPORT_CLUSTER_DIST + random.randint(50, 150)
-    duration = eucl_dist(from_airport, connecting_airport) * AIRPORT_CLUSTER_DIST * 10
+    duration = eucl_dist(from_airport, connecting_airport) * AIRPORT_CLUSTER_DIST * 500
 
     time = datetime(2000, 1, 1, random.randint(0, 23), random.randint(0, 59), 0).time()
 
-    connections.append(Connection(connection_id, from_airport, connecting_airport, PLANE, duration, round(cost, 2), time, 60 * 12))
+    connections.append(Connection(connection_id, from_airport, connecting_airport, PLANE, duration, round(cost, 2)))
     connection_id += 1
 
 logging.info(f'Found {len(connections)} connections in routes.')
+
+if not NO_PRUNE:
+    logging.info(f'Pruning connections not reachable from {stations_by_id[REACHABILITY_FROM_REQUIRED].name}...')
+
+    removed_stations = set()
+
+    def remove_station(id):
+        station = stations_by_id[id]
+        stations.remove(station)
+        removed_stations.add(station.id)
+
+    def prune_connections():
+        for connection in connections:
+            if connection.from_station_id in removed_stations or connection.to_station_id in removed_stations:
+                connections.remove(connection)
+
+    def remove_unreachable():
+        (distances, parent, via) = bellman_ford(REACHABILITY_FROM_REQUIRED, connections, lambda x: 1)
+        for station in stations:
+            if station.id not in distances:
+                remove_station(station.id)
+        prune_connections()
+
+    remove_unreachable()
+
+    logging.info(f'{len(stations)} stations left. {len(connections)} connections left.')
+
+    redirects = dict()
+
+    def follow_redirect(src):
+        if src not in redirects:
+            return src
+        return follow_redirect(redirects[src])
+
+    def merge(src, tar):
+        target_redir = follow_redirect(src.id)
+        target_station = stations_by_id[target_redir]
+        target_station.transport_type |= tar.transport_type
+        if len(target_station.name) > len(tar.name):
+            logging.info(f'Renaming {target_station.name} to {tar.name}')
+            target_station.name = tar.name
+        remove_station(tar.id)
+        redirects[tar.id] = target_redir
+
+
+    def cluster_stations():
+        src_station = stations[random.randint(0, len(stations) - 1)]
+        for station in stations:
+            # we don't merge stations from which reachability is required
+            if eucl_dist(src_station.id, station.id) < STATION_CLUSTER_DIST and station.id != src_station.id and station.id != REACHABILITY_FROM_REQUIRED:
+                logging.info(f'Merging {stations_by_id[src_station.id].name} and {stations_by_id[station.id].name}')
+                merge(src_station, station)
+                return
+
+    logging.info('Clustering stations')
+    while len(stations) > MAX_STATIONS:
+        cluster_stations()
+        logging.info(f'{len(stations)} stations left...')
+    
+    logging.info('Redirecting connections')
+    for conn in connections:
+        if conn.from_station_id in redirects or conn.to_station_id in redirects:
+            if conn.from_station_id in redirects:
+                conn.from_station_id = follow_redirect(conn.from_station_id)
+            if conn.to_station_id in redirects:
+                conn.to_station_id = follow_redirect(conn.to_station_id)
+            logging.info(f'Redirected connection from {stations_by_id[conn.from_station_id].name} to {stations_by_id[conn.to_station_id].name}')
+
+    logging.info(f'There are {len(connections)} connections. Removing duplicates between merged stations...')
+    for key, group in groupby(connections, lambda x: (x.from_station_id, x.to_station_id)):
+        g = list(group)
+        g.sort(key=lambda x: x.transport_type != BUS)
+
+        first = True
+        for item in g:
+            if first:
+                item.duration = int(statistics.mean(list(map(lambda x: x.duration, group))))
+                item.cost = statistics.mean(list(map(lambda x: x.cost, group)))
+                first = False
+                continue
+            connections.remove(item)
+
+    prune_connections()
+    
+    logging.info(f'{len(connections)} connections left...')
+    
 
 with open('deg.json', 'w') as f:
     json.dump({
@@ -330,15 +425,13 @@ def write_connections(sql: TextIOWrapper):
                 ToStationId integer foreign key not null references Station(Id),
                 TransportType int not null,
                 Duration int not null,
-                Cost int not null,
-                StartTimeOffset time not null
-                Recurrence int not null);\n\n'''
+                Cost int not null);\n\n'''
     ])
 
     for connection in connections:
         sql.writelines([
-            f'''insert into Connection(Id, FromStationId, ToStationId, TransportType, Duration, Cost, StartTimeOffset, Recurrence) values 
-                ({connection.id}, {connection.from_station_id}, {connection.to_station_id}, {connection.transport_type}, {connection.duration}, {connection.cost}, {connection.start_time_offset}, {connection.recurrence});\n'''
+            f'''insert into Connection(Id, FromStationId, ToStationId, TransportType, Duration, Cost) values 
+                ({connection.id}, {connection.from_station_id}, {connection.to_station_id}, {connection.transport_type}, {connection.duration}, {connection.cost});\n'''
         ])
 
 def write_stations(sql: TextIOWrapper):
