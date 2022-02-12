@@ -45,7 +45,7 @@ tickets = []
 
 # download and prepare data
 if not os.path.isfile('cust.json'):
-    res = requests.get(f'https://randomuser.me/api?results={NUM_CUSTOMERS}')
+    res = requests.get(f'https://randomuser.me/api?results={NUM_CUSTOMERS}&nat=ch')
     res = res.json()['results']
     open('cust.json', 'w').write(json.dumps(res))
 else:
@@ -56,7 +56,7 @@ for cust in res:
     customer_id += 1
 
 if not os.path.isfile('emp.json'):
-    res = requests.get(f'https://randomuser.me/api?results={NUM_EMPLOYEES}')
+    res = requests.get(f'https://randomuser.me/api?results={NUM_EMPLOYEES}&nat=ch')
     res = res.json()['results']
     open('emp.json', 'w').write(json.dumps(res))
 else:
