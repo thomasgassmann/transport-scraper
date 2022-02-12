@@ -390,7 +390,7 @@ if not NO_PRUNE:
         valid_stations.add(station.id)
     to_remove = []
     for connection in connections:
-        if connection.from_station_id not in valid_stations or connection.to_station_id not in valid_stations:
+        if connection.from_station_id not in valid_stations or connection.to_station_id not in valid_stations or (connection.from_station_id == connection.to_station_id):
             to_remove.append(connection)
             logging.info(f'Removing {stations_by_id[connection.from_station_id].name} - {stations_by_id[connection.to_station_id].name}')
     for item in to_remove:
